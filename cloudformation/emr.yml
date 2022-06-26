@@ -1,0 +1,184 @@
+Parameters:
+  MasterNodeCount:
+    Description: " Number of master nodes" 
+    Type: Number
+    Default: 1
+
+  CoreNodeCount:
+    Description: "Number of core nodes" 
+    Type: Number
+    Default: 1
+  
+  NetworkStackName:
+    Description: "Cloudformation Network Stack"
+    Type: String
+    Default: "test2"
+
+Resources:
+
+  S3Bucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketEncryption: 
+        ServerSideEncryptionConfiguration: 
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls : true
+        BlockPublicPolicy : true
+        IgnorePublicAcls : true
+        RestrictPublicBuckets : true
+      MetricsConfigurations: # I want to do some logging
+        - Id: "EntireBucket"
+
+
+
+  InboundSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "SG for easy access, to lock down"
+      VpcId: !ImportValue 
+            'Fn::Sub': '${NetworkStackName}-VPCID'
+      SecurityGroupIngress:
+        - 
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - 
+          IpProtocol: -1 # Overkill but simplifies my life
+          CidrIp: !ImportValue 
+            'Fn::Sub': '${NetworkStackName}-SubnetID'
+
+      SecurityGroupEgress:
+        - 
+          IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      
+
+  cluster:
+    Type: AWS::EMR::Cluster
+    Properties:
+      Applications:
+      - Name: Ganglia
+      - Name: Hbase
+      
+      Configurations:
+      - Classification: hbase-site
+        ConfigurationProperties:
+          "hbase.bucketcache.combinedcache.enabled": "true"
+          "hbase.bucketcache.ioengine": "file:/mnt/bucketcache/cachefile"
+          "hbase.bucketcache.size": "20000"
+          "hbase.rootdir": 
+            Fn::Sub: "s3://${S3Bucket}/my-hbase-rootdir"
+
+      - Classification: hbase
+        ConfigurationProperties:
+          "hbase.emr.storageMode": s3
+          "hbase.rs.cacheblocksonwrite": true
+          "hbase.master.cleaner.interval": 1 
+
+# THere are a lot of suggestions in https://d1.awsstatic.com/whitepapers/Migrating_to_Apache_Hbase_on_Amazon_S3_on_Amazon_EMR.pdf
+
+
+
+
+      EbsRootVolumeSize: 20 #TODO parameter
+      Instances:
+        # ServiceAccessSecurityGroup:
+        # EmrManagedMasterSecurityGroup
+        # EmrManagedSlaveSecurityGroup
+        AdditionalMasterSecurityGroups: 
+          - !Ref InboundSG
+
+        AdditionalSlaveSecurityGroups: 
+          - !Ref InboundSG
+
+        Ec2SubnetId: 
+          !ImportValue 
+            'Fn::Sub': '${NetworkStackName}-SubnetID'
+
+        MasterInstanceGroup:
+          InstanceCount: !Ref MasterNodeCount
+          InstanceType: m5.xlarge
+          Market: ON_DEMAND
+          Name: Master
+
+        CoreInstanceGroup:
+          InstanceCount: !Ref CoreNodeCount
+          InstanceType: m5.xlarge
+          Market: ON_DEMAND
+          Name: Core
+          EbsConfiguration:
+            EbsBlockDeviceConfigs:
+            - VolumeSpecification:
+                SizeInGB: 25
+                VolumeType: gp2
+              VolumesPerInstance: 1
+        KeepJobFlowAliveWhenNoSteps: true
+        TerminationProtected: false
+        Ec2KeyName:
+          !ImportValue 
+            'Fn::Sub': '${NetworkStackName}-EC2Key'
+
+      # ManagedScalingPolicy pass for now
+      # ScaleDownBehavior # Pass
+      Name: AWS::StackName
+      ReleaseLabel: emr-6.6.0
+      # SecurityConfiguration # Do IRL becuase that'll do disk encryption etc.
+      ServiceRole: !Ref EMRClusterServiceRole
+      JobFlowRole: !Ref EMRClusterinstanceProfile
+      VisibleToAllUsers: true
+      BootstrapActions:
+        - Name: "Create bucketcache file"
+          ScriptBootstrapAction: 
+            Args: ['/mnt/bucketcache/']
+            Path: 's3://stephen-public-bucket-no-delete/mkdirscript.sh'
+
+  EMRClusterServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - elasticmapreduce.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceRole
+      Path: "/"
+
+
+  EMRClusterinstanceProfileRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceforEC2Role
+      Path: "/"
+
+  EMRClusterinstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+      - Ref: EMRClusterinstanceProfileRole
+
+Outputs:
+  MasterDNS:
+    Description: "Master DNS name"
+    Value: !GetAtt cluster.MasterPublicDNS
+    Export:
+      Name:
+        'Fn::Sub': '${AWS::StackName}-MasterDNS'
