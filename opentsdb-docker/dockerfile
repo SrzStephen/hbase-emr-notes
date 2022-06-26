@@ -1,0 +1,29 @@
+from debian:bullseye-20220527-slim as downloader
+# Assumes emr-6.6.0
+# https://docs.aws.amazon.com/emr/latest/ReleaseGuide/emr-hbase.html
+RUN  apt-get update \
+  && apt-get install -y wget gzip ca-certificates \
+  --no-install-recommends \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/* 
+RUN wget https://archive.apache.org/dist/hbase/2.4.4/hbase-2.4.4-client-bin.tar.gz
+RUN tar -xzf hbase-2.4.4-client-bin.tar.gz
+RUN wget https://github.com/OpenTSDB/opentsdb/releases/download/v2.4.1/opentsdb-2.4.1_all.deb
+# Todo Check MD5 hash
+RUN ls
+
+
+from debian:bullseye-20220527-slim
+COPY --from=downloader hbase-2.4.4-client/lib /hbase/lib/
+COPY --from=downloader /opentsdb-2.4.1_all.deb opentsdb-2.4.1_all.deb
+copy --from=downloader /hbase-2.4.4-client/bin/ /hbase/bin/
+RUN  apt-get update \
+&& apt-get install -y /opentsdb-2.4.1_all.deb gnuplot openjdk-17-jre-headless \
+--no-install-recommends \
+&& rm -rf /var/lib/apt/lists/* 
+# Expectation is that you mount /etc/opentsdb/opentsdb.conf
+# Alternatively you may also choose to log logback.xml and rollup
+USER opentsdb
+ENV HBASE_HOME=/hbase
+ENV JAVA_HOME /usr/lib/jvm/java-17-openjdk-amd64
+ENTRYPOINT [ "/usr/share/opentsdb/bin/tsdb", "tsdb"]
