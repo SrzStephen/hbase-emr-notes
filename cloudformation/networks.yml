@@ -196,6 +196,12 @@ Outputs:
     Export:
       Name:
         'Fn::Sub': '${AWS::StackName}-SubnetID'
+  SubnetCIDR:
+    Description: "Subnet CIDR"
+    Value: !Ref PublicSubnetCIDR
+    Export:
+      Name:
+        'Fn::Sub': '${AWS::StackName}-SubnetCIDR'
 
   KeyForEC2:
     Description: "Key name for VPC"
@@ -203,6 +209,7 @@ Outputs:
     Export:
       Name:
         'Fn::Sub': '${AWS::StackName}-EC2Key'
+
 # Commented out: May use in future to limit ssh to only a single bastion host that can access all other resources in the subnet.
   # EC2DNS:
   #   Description: "Bastion EC2 DNS"

@@ -46,7 +46,7 @@ Resources:
         - 
           IpProtocol: -1 # Overkill but simplifies my life
           CidrIp: !ImportValue 
-            'Fn::Sub': '${NetworkStackName}-SubnetID'
+            'Fn::Sub': '${NetworkStackName}-SubnetCIDR'
 
       SecurityGroupEgress:
         - 
@@ -118,7 +118,7 @@ Resources:
 
       # ManagedScalingPolicy pass for now
       # ScaleDownBehavior # Pass
-      Name: AWS::StackName
+      Name: !Sub ${AWS::StackName}
       ReleaseLabel: emr-6.6.0
       # SecurityConfiguration # Do IRL becuase that'll do disk encryption etc.
       ServiceRole: !Ref EMRClusterServiceRole
@@ -146,6 +146,27 @@ Resources:
       - arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceRole
       Path: "/"
 
+  TSDBHost:
+    DependsOn: cluster
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: 'm6i.xlarge'
+      KeyName: !ImportValue 
+            'Fn::Sub': '${NetworkStackName}-EC2Key'
+      ImageId: ami-0c802847a7dd848c0
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: True
+          DeviceIndex: 0
+          DeleteOnTermination: True
+          SubnetId: !ImportValue 
+            'Fn::Sub': '${NetworkStackName}-SubnetID'
+          GroupSet:
+            - !Ref InboundSG
+    Metadata: # For some reason cfn-lint is showing an error and it's super annoying
+      cfn-lint:
+        config:
+          ignore_checks:
+            - E3008
 
   EMRClusterinstanceProfileRole:
     Type: AWS::IAM::Role
@@ -177,3 +198,17 @@ Outputs:
     Export:
       Name:
         'Fn::Sub': '${AWS::StackName}-MasterDNS'
+  
+  EC2DNS:
+    Description: "TSDB EC2 DNS"
+    Value: !GetAtt TSDBHost.PublicDnsName
+    Export:
+      Name:
+        'Fn::Sub': '${AWS::StackName}-TSDBDNS'
+
+  TsdbInternalIP:
+    Description: "Bastion EC2"
+    Value: !GetAtt TSDBHost.PrivateIp
+    Export:
+      Name:
+        'Fn::Sub': '${AWS::StackName}-TSDBInternalIP'

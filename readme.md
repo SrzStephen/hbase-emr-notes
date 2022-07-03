@@ -171,7 +171,7 @@ To go one step further, the [Migrating to Apache Hbase on Amazon S3 on Amazon EM
 
 There's a few other options (including some that require modifications to the HBase column family to be fully effective). You'd probably want to investigate at the very least `hbase.rs.cacheblocksonwrite` as far as HBase settings go, although [The Whitepaper](https://d1.awsstatic.com/whitepapers/Migrating_to_Apache_Hbase_on_Amazon_S3_on_Amazon_EMR.pdf) has more info around these.
 
-You'd probably want to investigate column family level settings, eg `IN_MEMORY` which changes priorities when it comes to cache evictions, and some more self explanitory settings `CACHE_DATA_ON_WRITE` `CACHE_INDEX_ON_WRITE` `CACHE_BLOOMS_ON_WRITE` `BLOCKCACHE`.
+You'd probably want to investigate column family level settings, eg `IN_MEMORY` which changes priorities when it comes to cache evictions, and some more self-explanatory settings `CACHE_DATA_ON_WRITE` `CACHE_INDEX_ON_WRITE` `CACHE_BLOOMS_ON_WRITE` `CACHE_DATA_IN_L1`.
 
 
 ## Testing
